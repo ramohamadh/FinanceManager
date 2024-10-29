@@ -15,7 +15,7 @@ from typing import List
 
 SECRET_KEY = "7093c2f408c24ced10236cd194bc0b08562c4e54ff5277b71e50d804a06b22e9"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 40
+ACCESS_TOKEN_EXPIRE_MINUTES = 15
 
 def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode = data.copy()
