@@ -10,12 +10,11 @@ from datetime import datetime, timedelta
 from sqlalchemy.exc import IntegrityError
 import jwt
 import pandas as pd
-from fastapi import File, UploadFile
-from typing import List
+
 
 SECRET_KEY = "7093c2f408c24ced10236cd194bc0b08562c4e54ff5277b71e50d804a06b22e9"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 15
+ACCESS_TOKEN_EXPIRE_MINUTES = 40
 
 def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode = data.copy()
@@ -132,7 +131,12 @@ def update_excel_file(user_id: int, db: Session):
         df_incomes.to_excel(writer, sheet_name='Incomes', index=False)
         df_expenses.to_excel(writer, sheet_name='Expenses', index=False)
 
-@app.post("/signup/", status_code=status.HTTP_201_CREATED)
+
+from fastapi import UploadFile, File
+
+
+
+@app.post("/signup", status_code=status.HTTP_201_CREATED)
 async def sign_up(user: User, db: Session = Depends(get_db)):
     try:
         db_user = db.query(UserDB).filter(UserDB.username == user.username).first()
@@ -162,7 +166,7 @@ async def sign_up(user: User, db: Session = Depends(get_db)):
         db.rollback()
         raise HTTPException(status_code=400, detail=f"An error occurred: {str(e)}")
 
-@app.post("/signin/")
+@app.post("/signin")
 async def sign_in(username: str, password: str, db: Session = Depends(get_db)):
     user = db.query(UserDB).filter(UserDB.username == username).first()
     if user is None or not pwd_context.verify(password, user.password):
@@ -175,7 +179,7 @@ async def sign_in(username: str, password: str, db: Session = Depends(get_db)):
 
     return {"access_token": access_token, "token_type": "bearer"}
 
-@app.post("/income/")
+@app.post("/Income")
 async def add_income(income: Income, current_user: UserDB = Depends(get_current_user), db: Session = Depends(get_db)):
     new_income = IncomeDB(user_id=current_user.id, **income.dict())
     db.add(new_income)
@@ -186,7 +190,7 @@ async def add_income(income: Income, current_user: UserDB = Depends(get_current_
     return {"msg": "Income added successfully"}
 
 
-@app.post("/expense/")
+@app.post("/Expense")
 async def add_expense(expense: Expense, current_user: UserDB = Depends(get_current_user), db: Session = Depends(get_db)):
     new_expense = ExpenseDB(user_id=current_user.id, **expense.dict())
     db.add(new_expense)
@@ -196,7 +200,7 @@ async def add_expense(expense: Expense, current_user: UserDB = Depends(get_curre
 
     return {"msg": "Expense added successfully"}
 
-@app.put("/income/{income_id}")
+@app.put("/Update Income")
 async def update_income(income_id: int, income: Income, current_user: UserDB = Depends(get_current_user), db: Session = Depends(get_db)):
     db_income = db.query(IncomeDB).filter(IncomeDB.id == income_id, IncomeDB.user_id == current_user.id).first()
     if db_income is None:
