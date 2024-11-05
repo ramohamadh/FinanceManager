@@ -1,16 +1,14 @@
 import os
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile, Header
 from pydantic import BaseModel, EmailStr, constr
 from sqlalchemy import create_engine, Column, Float, Integer, String, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from passlib.context import CryptContext
-from fastapi import Header
 from datetime import datetime, timedelta
 from sqlalchemy.exc import IntegrityError
 import jwt
 import pandas as pd
-
 
 SECRET_KEY = "7093c2f408c24ced10236cd194bc0b08562c4e54ff5277b71e50d804a06b22e9"
 ALGORITHM = "HS256"
@@ -113,28 +111,43 @@ def get_current_user(token: str = Header(...), db: Session = Depends(get_db)):
         )
     return user
 
-def update_excel_file(user_id: int, db: Session):
-    incomes = db.query(IncomeDB).filter(IncomeDB.user_id == user_id).all()
-    expenses = db.query(ExpenseDB).filter(ExpenseDB.user_id == user_id).all()
+@app.post("/upload-incomes/")
+async def upload_incomes(file: UploadFile = File(...), current_user: UserDB = Depends(get_current_user)):
+    try:
+        df = pd.read_excel(file.file)
+        expected_columns = ["amount", "source"]
+        issues = []
+        for index, row in df.iterrows():
+            if row.isnull().all():
+                issues.append(f"Row {index + 1} is empty")
+            elif not all(col in row and pd.notna(row[col]) for col in expected_columns):
+                issues.append(f"Row {index + 1} is missing income columns")
 
-    income_data = [{"amount": income.amount, "source": income.source} for income in incomes]
-    expense_data = [{"amount": expense.amount, "category": expense.category, "description": expense.description} for expense in expenses]
+        if issues:
+            return {"issues": issues}
+        return {"msg": "Incomes file is structured correctly"}
 
-    df_incomes = pd.DataFrame(income_data)
-    df_expenses = pd.DataFrame(expense_data)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"An error occurred: {str(e)}")
 
-    directory = "/Users/mohammad/Desktop/Project"
-    os.makedirs(directory, exist_ok=True)
+@app.post("/upload-expenses/")
+async def upload_expenses(file: UploadFile = File(...), current_user: UserDB = Depends(get_current_user)):
+    try:
+        df = pd.read_excel(file.file)
+        expected_columns = ["amount", "category", "description"]
+        issues = []
+        for index, row in df.iterrows():
+            if row.isnull().all():
+                issues.append(f"Row {index + 1} is empty")
+            elif not all(col in row and pd.notna(row[col]) for col in expected_columns):
+                issues.append(f"Row {index + 1} is missing expense columns")
 
-    file_path = os.path.join(directory, f'financial_summary_user_{user_id}.xlsx')
-    with pd.ExcelWriter(file_path) as writer:
-        df_incomes.to_excel(writer, sheet_name='Incomes', index=False)
-        df_expenses.to_excel(writer, sheet_name='Expenses', index=False)
+        if issues:
+            return {"issues": issues}
+        return {"msg": "Expenses file is structured correctly"}
 
-
-from fastapi import UploadFile, File
-
-
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"An error occurred: {str(e)}")
 
 @app.post("/signup", status_code=status.HTTP_201_CREATED)
 async def sign_up(user: User, db: Session = Depends(get_db)):
@@ -185,18 +198,13 @@ async def add_income(income: Income, current_user: UserDB = Depends(get_current_
     db.add(new_income)
     db.commit()
 
-    update_excel_file(current_user.id, db)
-
     return {"msg": "Income added successfully"}
-
 
 @app.post("/Expense")
 async def add_expense(expense: Expense, current_user: UserDB = Depends(get_current_user), db: Session = Depends(get_db)):
     new_expense = ExpenseDB(user_id=current_user.id, **expense.dict())
     db.add(new_expense)
     db.commit()
-
-    update_excel_file(current_user.id, db)
 
     return {"msg": "Expense added successfully"}
 
@@ -210,8 +218,6 @@ async def update_income(income_id: int, income: Income, current_user: UserDB = D
         setattr(db_income, key, value)
     db.commit()
 
-    update_excel_file(current_user.id, db)
-
     return {"msg": "Income updated successfully"}
 
 @app.put("/expense/{expense_id}")
@@ -224,8 +230,6 @@ async def update_expense(expense_id: int, expense: Expense, current_user: UserDB
         setattr(db_expense, key, value)
     db.commit()
 
-    update_excel_file(current_user.id, db)
-
     return {"msg": "Expense updated successfully"}
 
 @app.delete("/income/{income_id}")
@@ -236,8 +240,6 @@ async def delete_income(income_id: int, current_user: UserDB = Depends(get_curre
 
     db.delete(db_income)
     db.commit()
-
-    update_excel_file(current_user.id, db)
 
     return {"msg": "Income deleted successfully"}
 
@@ -250,16 +252,12 @@ async def delete_expense(expense_id: int, current_user: UserDB = Depends(get_cur
     db.delete(db_expense)
     db.commit()
 
-    update_excel_file(current_user.id, db)
-
     return {"msg": "Expense deleted successfully"}
 
 @app.get("/financial-summary/")
 async def financial_summary(current_user: UserDB = Depends(get_current_user), db: Session = Depends(get_db)):
-    update_excel_file(current_user.id, db)
-    return {"msg": "Financial data exported to Excel successfully"}
+    return {"msg": "Financial summary fetched successfully"}
 
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run(app, host="127.0.0.1", port=8000)
